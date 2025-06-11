@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mail.tm Inbox Wrapper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    body {
+      background: #f9fafb;
+      color: #222;
+    }
+    header, footer, .ad, .content {
+      padding: 20px;
+      margin: 10px;
+      border-radius: 8px;
+    }
+    header, footer {
+      background: #222;
+      color: #fff;
+      text-align: center;
+    }
+    .ad {
+      background: #ffe066;
+      text-align: center;
+      font-weight: bold;
+    }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .sidebar {
+      flex: 1 1 200px;
+      min-width: 150px;
+      background: #fff;
+      margin: 10px;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    .main {
+      flex: 3 1 600px;
+      background: #fff;
+      margin: 10px;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    .btn {
+      background: #0a9396;
+      color: #fff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: #005f73;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .email-list {
+      margin-top: 20px;
+    }
+    .email-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    .email-item:hover {
+      background: #f0f0f0;
+    }
+    .email-content {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      background: #eef;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    main {
+      flex: 1;
+    }
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+    }
+    .credits {
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .credits a {
+      color: #ffb703;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📧 Mail.tm Temporary Mailbox</h1>
+</header>
+
+<main>
+  <div class="ad">AD: Secure Your Inbox — Free Temporary Email Now!</div>
+
+  <div class="container">
+    <div class="sidebar">
+      <h3>📢 Ads</h3>
+      <div class="ad">🔥 Ad 1: Mail Privacy Tools</div>
+      <div class="ad" style="margin-top:20px;">📦 Ad 2: Inbox Shield Pro</div>
+    </div>
+
+    <div class="main">
+      <h2>Create Temp Email</h2>
+      <button class="btn" onclick="createAccount()">Generate New Email</button>
+      <input type="text" id="emailField" readonly placeholder="Your new email will appear here">
+
+      <h2>📬 Inbox</h2>
+      <button class="btn" onclick="fetchMessages()">Refresh Inbox</button>
+      <div class="email-list" id="inbox"></div>
+
+      <div class="email-content" id="emailContent"></div>
+    </div>
+  </div>
+
+  <div class="ad">AD: Upgrade to Mail.tm Pro — No Ads!</div>
+</main>
+
+<footer>
+  <p>&copy; 2025 Mail.tm Inbox Wrapper | Built by Gagan</p>
+  <div class="credits">
+    API powered by <a href="https://docs.mail.tm/" target="_blank">Mail.tm</a> — Temporary Email Service.
+  </div>
+</footer>
+
+<script>
+  let token = localStorage.getItem('token') || '';
+  let addressId = localStorage.getItem('addressId') || '';
+  let pollingInterval;
+
+  async function createAccount() {
+    try {
+      const resDomains = await fetch('https://api.mail.tm/domains', {
+        headers: { 'Accept': 'application/ld+json' }
+      });
+      const domains = await resDomains.json();
+      const domainList = domains['hydra:member'];
+
+      if (!domainList.length) throw new Error('No available domains found.');
+
+      const randomDomain = domainList[0].domain;
+      const password = 'password123';
+      let created = false;
+
+      while (!created) {
+        const email = `user${Math.floor(Math.random() * 999999)}@${randomDomain}`;
+        const res = await fetch('https://api.mail.tm/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/ld+json' },
+          body: JSON.stringify({ address: email, password })
+        });
+
+        const body = await res.json();
+
+        if (res.status === 201) {
+          created = true;
+          document.getElementById('emailField').value = email;
+          await login(email, password);
+          startPolling();
+        } else if (res.status === 422) {
+          if (body.violations) console.warn('Validation error, retrying...');
+        } else {
+          throw new Error(`Failed to create account: ${res.status}`);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to create email.');
+    }
+  }
+
+  async function login(email, password) {
+    const res = await fetch('https://api.mail.tm/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/ld+json' },
+      body: JSON.stringify({ address: email, password })
+    });
+    const data = await res.json();
+    token = data.token;
+    localStorage.setItem('token', token);
+
+    const meRes = await fetch('https://api.mail.tm/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const meData = await meRes.json();
+    addressId = meData.id;
+    localStorage.setItem('addressId', addressId);
+  }
+
+  async function fetchMessages() {
+    if (!token) return alert('Generate an email first.');
+
+    const res = await fetch('https://api.mail.tm/messages', {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/ld+json' }
+    });
+    const data = await res.json();
+
+    const inbox = document.getElementById('inbox');
+    inbox.innerHTML = '';
+
+    data['hydra:member'].forEach(msg => {
+      const div = document.createElement('div');
+      div.className = 'email-item';
+      div.textContent = `${msg.from.address} - ${msg.subject}`;
+      div.onclick = () => fetchEmail(msg.id);
+      inbox.appendChild(div);
+    });
+
+    if (data['hydra:member'].length === 0) {
+      inbox.innerHTML = 'Inbox is empty.';
+    }
+  }
+
+  async function fetchEmail(id) {
+    const res = await fetch(`https://api.mail.tm/messages/${id}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/ld+json' }
+    });
+    const data = await res.json();
+    const cleanText = (data.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    document.getElementById('emailContent').innerHTML = cleanText || '(No content)';
+  }
+
+  function startPolling() {
+    clearInterval(pollingInterval);
+    pollingInterval = setInterval(fetchMessages, 10000);
+  }
+
+  if (token) startPolling();
+</script>
+
+</body>
+</html>
